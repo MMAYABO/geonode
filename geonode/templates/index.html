@@ -12,11 +12,11 @@
   {% block hero %}
   <div class="jumbotron">
   	<div class="container">
-  		<h1>{% trans "Welcome" %}</h1>
+  		<h1>{% trans "GeoVisor  DGBAP" %}</h1>
   		<p></p>
-  		<p>{% blocktrans %}GeoNode is an open source platform for sharing geospatial data and maps.{% endblocktrans %}</p>
-		<p>{% blocktrans %}If you have any questions about the software or service, join our <a href="http://lists.osgeo.org/cgi-bin/mailman/listinfo/geonode-users">mailing list</a>.{% endblocktrans %}</p>
-  		<a class="btn btn-default btn-lg" target="_blank" href="http://docs.geonode.org/en/master/tutorials/users/index.html" role="button">{% blocktrans %}Get Started &raquo;{% endblocktrans %}</a>
+  		<p>{% blocktrans %}GeoVisor DGBAP podra visualizar y descargar los distintos datos que se manejan en la Direccion General de Biodiversidad y Areas Protegidas.{% endblocktrans %}</p>
+		<p>{% blocktrans %}Si tienen alguna pregunta contactese con nosotros. <a href="http://mmaya.gob.bo">MMAYA </a>.{% endblocktrans %}</p>
+  		<a class="btn btn-default btn-lg" target="_blank" href="http://docs.geonode.org/en/master/tutorials/users/index.html" role="button">{% blocktrans %}Como usar el Geovisor DGBAP &raquo;{% endblocktrans %}</a>
   	</div>
   </div>
   {% endblock %}
@@ -25,7 +25,7 @@
   {% block bigsearch %}
   <div class="big-search">
   	<div class="container">
-  		<h1>{% trans "Search for Data." %}</h1>
+  		<h1>{% trans "Buscar datos" %}</h1>
   		<div class="search">
   			<form id="search" action="{% url "search" %}" >
   				<span class="fa fa-search fa-2x"></span>
@@ -36,11 +36,11 @@
   				{% endif %}
   			</form>
   		</div>
-  		<p><a class="btn btn-default btn-lg" href="/search/">Advanced Search</a></p>
+  		<!--<p><a class="btn btn-default btn-lg" href="/search/">Ver todos los datos</a></p>-->
   	</div>
   </div>
   {% endblock %}
-
+<!--
   {% block datasets %}
   <section id="datasets">
   	<div class="container">
@@ -160,12 +160,12 @@
   	</div>
   </section>
   {% endblock %}
-
+-->
   {% block showcase %}
   <section id="showcase">
     <div class="container">
       <div class="row">
-        <h2>Featured Datasets</h2>
+        <h2>Conjuntos de Datos Destacados</h2>
         {% verbatim %}
         <div ng-app="featured">
           <div ng-repeat="item in featured | limitTo:4">
@@ -177,7 +177,7 @@
         </div>
   		{% endverbatim %}
       </div>
-      <p><a href="/search/">Explore all datasets</a></p>
+      <p><a href="/search/">Explorar todos los Datos</a></p>
     </div>
   </section>
   {% endblock %}

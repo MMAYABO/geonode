@@ -380,8 +380,14 @@
           </div>
         </div>
       </div>
+
+      
+
     </div>
     {% endif %}
+    
+         <a class="btn btn-default btn-block btn-xs" href="#" id="set_thumbnail1">{% trans "Set" %}</a>
+    
 
     <li class="list-group-item">
       <button class="btn btn-default btn-md btn-block" data-toggle="modal" data-target="#download-metadata">{% trans "Download Metadata" %}</button>
@@ -443,24 +449,7 @@
       {% endif %}
     </li>
     {% endif %}
-    <li class="list-group-item">
-      <h4>{% trans "Maps using this layer" %}</h4>
-      {% if resource.maps %}
-        <p>{% trans "List of maps using this layer:" %}</p>
-        {% endif %}
-        <ul class="list-unstyled">
-          {% for maplayer in resource.maps %}
-            <li><a href="{{ maplayer.map.get_absolute_url }}">{{ maplayer.map.title }}</a></li>
-          {% empty %}
-            <li>{% trans "This layer is not currently used in any maps." %}</li>
-          {% endfor %}
-        </ul>
-    </li>
-    <li class="list-group-item">
-      <h4>{% trans "Create a map using this layer" %}</h4>
-      <p>{% trans "Click the button below to generate a new map based on this layer." %}</p>
-        <a href="{% url "new_map" %}?layer={{resource.service_typename}}" class="btn btn-primary btn-block">{% trans "Create a Map" %}</a>
-    </li>
+        
 
     {% if documents.count > 0 %}
     <li class="list-group-item">
@@ -495,6 +484,7 @@
       </ul>
     </li>
     {% endif %}
+
 
     {% if GEONODE_SECURITY_ENABLED %}
     {% if "change_resourcebase_permissions" in perms_list %}
@@ -577,6 +567,10 @@
         </script>
     <script type="text/javascript">
       $('#set_thumbnail').click(function(){
+        createMapThumbnail();
+        $('#edit-layer').modal('toggle');
+      });
+      $('#set_thumbnail1').click(function(){
         createMapThumbnail();
         $('#edit-layer').modal('toggle');
       });

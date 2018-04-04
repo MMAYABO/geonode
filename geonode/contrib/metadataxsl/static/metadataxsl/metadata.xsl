@@ -70,7 +70,7 @@
             <BODY ONCONTEXTMENU="return true">
                 <!-- LOGOS -->
                 <DIV class="logos">
-                    <img src="/static/geonode/img/logo-bg.png" class="fright geonodelogo"  />
+                    <img src="/static/geonode/img/logo-bg.png" class="fright geonodelogo" />
                 </DIV>
 
 

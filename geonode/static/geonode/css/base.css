@@ -3101,9 +3101,9 @@ fieldset[disabled] .btn-default.focus {
   background-color: #333;
 }
 .btn-primary {
-  color: #fff;
-  background-color: #2c689c;
-  border-color: #265a88;
+  color: #3a0d02;
+  background-color: rgba(185, 65, 18, 0.9);
+  border-color: #b94112;
 }
 .btn-primary:focus,
 .btn-primary.focus {
@@ -3113,7 +3113,7 @@ fieldset[disabled] .btn-default.focus {
 }
 .btn-primary:hover {
   color: #fff;
-  background-color: #204d74;
+  background-color: #7f2705;
   border-color: #193b58;
 }
 .btn-primary:active,
@@ -6815,7 +6815,7 @@ article.tab-pane {
 /* ------ Nav
 ------------------------------ */
 .navbar-inverse {
-  background-color: #333333;
+  background-color: #b94112;
   border: 0;
 }
 .navbar-inverse .navbar-nav > li > a {
@@ -6886,7 +6886,7 @@ article.tab-pane {
   background: url(../img/logo.png) 0 10px no-repeat;
   background-size: 100%;
   text-indent: -9999px;
-  height: 65px;
+  height: 75px;
   width: 200px;
 }
 .navbar-collapse {
@@ -6903,14 +6903,14 @@ article.tab-pane {
 /* ------ Home
 ------------------------------ */
 .home .navbar-inverse {
-  background-color: rgba(0, 0, 0, 0.5);
+  background-color: rgba(82, 138, 32, 0.87);
 }
 .home #wrap {
   margin-top: -60px;
   padding-bottom: 0;
 }
 .home .jumbotron {
-  background: #2c689c;
+  background: #0a1f0a;
   color: white;
   margin-bottom: 0;
   padding: 7.5em 0 3.75em;
@@ -6931,11 +6931,11 @@ article.tab-pane {
   min-width: 320px;
 }
 .home .jumbotron .btn-default:hover {
-  background: rgba(0, 0, 0, 0.4);
+  background: rgba(0, 0, 0, 0.4 );
 }
 .home .big-search {
-  background: #333333;
-  color: white;
+  background: #abefa5;
+  color: #0a2908;
   padding-bottom: 3em;
   padding-top: 1em;
 }

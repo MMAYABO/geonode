@@ -867,7 +867,7 @@ DOWNLOAD_FORMATS_METADATA = [
 ]
 DOWNLOAD_FORMATS_VECTOR = [
     'JPEG', 'PDF', 'PNG', 'Zipped Shapefile', 'GML 2.0', 'GML 3.1.1', 'CSV',
-    'Excel', 'GeoJSON', 'KML', 'View in Google Earth', 'Tiles',
+    'Excel', 'GeoJSON',  'View in Google Earth',
 ]
 DOWNLOAD_FORMATS_RASTER = [
     'JPEG',
@@ -877,9 +877,7 @@ DOWNLOAD_FORMATS_RASTER = [
     'GeoTIFF',
     'Gtopo30',
     'ImageMosaic',
-    'KML',
     'View in Google Earth',
-    'Tiles',
     'GML',
     'GZIP'
 ]

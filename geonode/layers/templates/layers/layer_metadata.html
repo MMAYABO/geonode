@@ -1,15 +1,14 @@
 {% extends "metadata_base.html" %}
 {% load i18n %}
-{% load url from future %}
 {% load bootstrap_tags %}
 {% load base_tags %}
 {% load guardian_tags %}
 {% load floppyforms %}
 
-{% block title %}{{ layer.typename }} — {{ block.super }}{% endblock title %}
+{% block title %}{{ layer.alternate }} — {{ block.super }}{% endblock title %}
 
 {% block head %}
-    {% include "layers/layer_ol2_map.html" %}
+    {% include "ol/layers/layer_ol2_map.html" %}
 {{ block.super }}
 {% endblock head %}
 
@@ -94,6 +93,7 @@
 
             {% if not layer.metadata_uploaded_preserve %}
             <div class="form-actions">
+              <a href="{% url 'layer_detail' layername=resource.alternate %}" class="btn btn-primary">{% trans "Return to Layer" %}</a>
               <input type="button" id="btn_back_dwn" class="btn btn-primary" style="display: none" value="{% trans "<< Back" %}"/>
               <input type="submit" id="btn_upd_md_dwn" class="btn btn-primary" value="{% trans "Update" %}"/>
               <input type="button" id="btn_next_dwn" class="btn btn-primary" value="{% trans "Next >>" %}"/>

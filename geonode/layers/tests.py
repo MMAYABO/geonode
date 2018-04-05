@@ -38,11 +38,12 @@ from django.contrib.auth.models import Group
 from django.db.models import Count
 from django.contrib.auth import get_user_model
 from agon_ratings.models import OverallRating
+from django.test.testcases import LiveServerTestCase
 
 from guardian.shortcuts import get_anonymous_user
 from guardian.shortcuts import assign_perm, remove_perm
 
-from geonode import GeoNodeException
+from geonode import GeoNodeException, geoserver, qgis_server
 from geonode.layers.models import Layer, Style
 from geonode.layers.utils import layer_type, get_files, get_valid_name, \
     get_valid_layer_name
@@ -50,6 +51,7 @@ from geonode.people.utils import get_valid_user
 from geonode.base.models import TopicCategory, License, Region
 from geonode.base.populate_test_data import create_models, all_public
 from geonode.layers.forms import JSONField, LayerUploadForm
+from geonode.utils import check_ogc_backend
 from .populate_layers_data import create_layer_data
 from geonode.tests.utils import NotificationsTestsHelper
 from geonode.layers import LayersAppConfig
@@ -88,11 +90,32 @@ class LayersTest(TestCase):
         response = self.client.get(reverse('layer_metadata', args=('geonode:CA',)))
         self.failUnlessEqual(response.status_code, 200)
 
+    def test_describe_data_3(self):
+        '''/data/geonode:CA/metadata_detail -> Test accessing the description of a layer '''
+        self.client.login(username='admin', password='admin')
+        # ... all should be good
+        response = self.client.get(reverse('layer_metadata_detail', args=('geonode:CA',)))
+        self.failUnlessEqual(response.status_code, 200)
+        self.assertContains(response, "Approved", count=1, status_code=200, msg_prefix='', html=False)
+        self.assertContains(response, "Published", count=1, status_code=200, msg_prefix='', html=False)
+        self.assertContains(response, "Featured", count=1, status_code=200, msg_prefix='', html=False)
+        self.assertContains(response, "<dt>Group</dt>", count=0, status_code=200, msg_prefix='', html=False)
+
+        # ... now assigning a Group to the Layer
+        lyr = Layer.objects.get(alternate='geonode:CA')
+        group = Group.objects.first()
+        lyr.group = group
+        lyr.save()
+        response = self.client.get(reverse('layer_metadata_detail', args=('geonode:CA',)))
+        self.failUnlessEqual(response.status_code, 200)
+        self.assertContains(response, "<dt>Group</dt>", count=1, status_code=200, msg_prefix='', html=False)
+        lyr.group = None
+        lyr.save()
+
     # Layer Tests
 
     # Test layer upload endpoint
     def test_upload_layer(self):
-
         # Test redirection to login form when not logged in
         response = self.client.get(reverse('layer_upload'))
         self.assertEquals(response.status_code, 302)
@@ -139,7 +162,6 @@ class LayersTest(TestCase):
     def test_layer_attributes_feature_catalogue(self):
         """ Test layer feature catalogue functionality
         """
-
         # test a non-existing layer
         url = reverse('layer_feature_catalogue', args=('bad_layer',))
         response = self.client.get(url)
@@ -148,14 +170,14 @@ class LayersTest(TestCase):
         # test a raster layer error (400)
         # Get the layer to work with
         layer = Layer.objects.get(pk=3)
-        url = reverse('layer_feature_catalogue', args=(layer.typename,))
+        url = reverse('layer_feature_catalogue', args=(layer.alternate,))
         response = self.client.get(url)
         self.assertEquals(response.status_code, 400)
         self.assertEquals(response['content-type'], 'application/json')
 
         # test a vector layer (200)
         layer = Layer.objects.get(pk=2)
-        url = reverse('layer_feature_catalogue', args=(layer.typename,))
+        url = reverse('layer_feature_catalogue', args=(layer.alternate,))
         response = self.client.get(url)
         self.assertEquals(response.status_code, 200)
         self.assertEquals(response['content-type'], 'application/xml')
@@ -297,6 +319,13 @@ class LayersTest(TestCase):
         files = dict(base_file=SimpleUploadedFile('foo.GEOTIF', ' '))
         self.assertTrue(LayerUploadForm(dict(), files).is_valid())
 
+    def testASCIIValidation(self):
+        files = dict(base_file=SimpleUploadedFile('foo.asc', ' '))
+        self.assertTrue(LayerUploadForm(dict(), files).is_valid())
+
+        files = dict(base_file=SimpleUploadedFile('foo.ASC', ' '))
+        self.assertTrue(LayerUploadForm(dict(), files).is_valid())
+
     def testZipValidation(self):
         the_zip = zipfile.ZipFile('test_upload.zip', 'w')
         in_memory_file = StringIO.StringIO()
@@ -355,6 +384,9 @@ class LayersTest(TestCase):
         self.assertEquals(layer_type('foo.geotiff'), 'raster')
         self.assertEquals(layer_type('foo.GEOTIFF'), 'raster')
         self.assertEquals(layer_type('foo.gEoTiFf'), 'raster')
+        self.assertEquals(layer_type('foo.asc'), 'raster')
+        self.assertEquals(layer_type('foo.ASC'), 'raster')
+        self.assertEquals(layer_type('foo.AsC'), 'raster')
 
         # basically anything else should produce a GeoNodeException
         self.assertRaises(GeoNodeException, lambda: layer_type('foo.gml'))
@@ -401,28 +433,59 @@ class LayersTest(TestCase):
 
         # Check that including an SLD with a valid shapefile results in the SLD
         # getting picked up
-        d = None
-        try:
-            d = tempfile.mkdtemp()
-            for f in ("foo.shp", "foo.shx", "foo.prj", "foo.dbf", "foo.sld"):
-                path = os.path.join(d, f)
-                # open and immediately close to create empty file
-                open(path, 'w').close()
+        if check_ogc_backend(geoserver.BACKEND_PACKAGE):
+            d = None
+            try:
+                d = tempfile.mkdtemp()
+                for f in ("foo.shp", "foo.shx", "foo.prj", "foo.dbf", "foo.sld"):
+                    path = os.path.join(d, f)
+                    # open and immediately close to create empty file
+                    open(path, 'w').close()
 
-            gotten_files = get_files(os.path.join(d, "foo.shp"))
-            gotten_files = dict((k, v[len(d) + 1:])
-                                for k, v in gotten_files.iteritems())
-            self.assertEquals(
-                gotten_files,
-                dict(
-                    shp="foo.shp",
-                    shx="foo.shx",
-                    prj="foo.prj",
-                    dbf="foo.dbf",
-                    sld="foo.sld"))
-        finally:
-            if d is not None:
-                shutil.rmtree(d)
+                gotten_files = get_files(os.path.join(d, "foo.shp"))
+                gotten_files = dict((k, v[len(d) + 1:])
+                                    for k, v in gotten_files.iteritems())
+                self.assertEquals(
+                    gotten_files,
+                    dict(
+                        shp="foo.shp",
+                        shx="foo.shx",
+                        prj="foo.prj",
+                        dbf="foo.dbf",
+                        sld="foo.sld"))
+            finally:
+                if d is not None:
+                    shutil.rmtree(d)
+
+        # Check that including a QML with a valid shapefile
+        # results in the QML
+        # getting picked up
+        if check_ogc_backend(qgis_server.BACKEND_PACKAGE):
+            d = None
+            try:
+                d = tempfile.mkdtemp()
+                for f in (
+                        "foo.shp", "foo.shx", "foo.prj", "foo.dbf", "foo.qml",
+                        "foo.json"):
+                    path = os.path.join(d, f)
+                    # open and immediately close to create empty file
+                    open(path, 'w').close()
+
+                gotten_files = get_files(os.path.join(d, "foo.shp"))
+                gotten_files = dict((k, v[len(d) + 1:])
+                                    for k, v in gotten_files.iteritems())
+                self.assertEquals(
+                    gotten_files,
+                    dict(
+                        shp="foo.shp",
+                        shx="foo.shx",
+                        prj="foo.prj",
+                        dbf="foo.dbf",
+                        qml="foo.qml",
+                        json="foo.json"))
+            finally:
+                if d is not None:
+                    shutil.rmtree(d)
 
         # Check that capitalized extensions are ok
         d = None
@@ -529,38 +592,39 @@ class LayersTest(TestCase):
 
         # Check that including both capital and lowercase SLD (this is
         # special-cased in the implementation)
-        d = None
-        try:
-            d = tempfile.mkdtemp()
-            files = (
-                "foo.SHP",
-                "foo.SHX",
-                "foo.PRJ",
-                "foo.DBF",
-                "foo.SLD",
-                "foo.sld")
-            for f in files:
-                path = os.path.join(d, f)
-                # open and immediately close to create empty file
-                open(path, 'w').close()
+        if check_ogc_backend(geoserver.BACKEND_PACKAGE):
+            d = None
+            try:
+                d = tempfile.mkdtemp()
+                files = (
+                    "foo.SHP",
+                    "foo.SHX",
+                    "foo.PRJ",
+                    "foo.DBF",
+                    "foo.SLD",
+                    "foo.sld")
+                for f in files:
+                    path = os.path.join(d, f)
+                    # open and immediately close to create empty file
+                    open(path, 'w').close()
 
-            # Only run the tests if this is a case sensitive OS
-            if len(os.listdir(d)) == len(files):
-                self.assertRaises(
-                    GeoNodeException,
-                    lambda: get_files(
-                        os.path.join(
-                            d,
-                            "foo.SHP")))
-                self.assertRaises(
-                    GeoNodeException,
-                    lambda: get_files(
-                        os.path.join(
-                            d,
-                            "foo.shp")))
-        finally:
-            if d is not None:
-                shutil.rmtree(d)
+                # Only run the tests if this is a case sensitive OS
+                if len(os.listdir(d)) == len(files):
+                    self.assertRaises(
+                        GeoNodeException,
+                        lambda: get_files(
+                            os.path.join(
+                                d,
+                                "foo.SHP")))
+                    self.assertRaises(
+                        GeoNodeException,
+                        lambda: get_files(
+                            os.path.join(
+                                d,
+                                "foo.shp")))
+            finally:
+                if d is not None:
+                    shutil.rmtree(d)
 
     def test_get_valid_name(self):
         self.assertEquals(get_valid_name("blug"), "blug")
@@ -619,7 +683,7 @@ class LayersTest(TestCase):
         layer = Layer.objects.get(pk=3)
         layer.default_style = Style.objects.get(pk=layer.pk)
         layer.save()
-        url = reverse('layer_remove', args=(layer.typename,))
+        url = reverse('layer_remove', args=(layer.alternate,))
         layer_id = layer.id
 
         # Create the rating with the correct content type
@@ -643,7 +707,7 @@ class LayersTest(TestCase):
         """Test layer remove functionality
         """
         layer = Layer.objects.get(pk=1)
-        url = reverse('layer_remove', args=(layer.typename,))
+        url = reverse('layer_remove', args=(layer.alternate,))
         layer.default_style = Style.objects.get(pk=layer.pk)
         layer.save()
 
@@ -671,6 +735,7 @@ class LayersTest(TestCase):
         # test the post method that actually removes the layer and redirects
         response = self.client.post(url)
         self.assertEquals(response.status_code, 302)
+        # self.assertEquals(response['Location'], '/layers/')
         self.assertEquals(response['Location'], 'http://testserver/layers/')
 
         # test that the layer is actually removed
@@ -686,7 +751,7 @@ class LayersTest(TestCase):
         """
         layer1 = Layer.objects.get(pk=1)
         layer2 = Layer.objects.get(pk=2)
-        url = reverse('layer_remove', args=(layer1.typename,))
+        url = reverse('layer_remove', args=(layer1.alternate,))
 
         layer1.default_style = Style.objects.get(pk=layer1.pk)
         layer1.save()
@@ -701,6 +766,7 @@ class LayersTest(TestCase):
         # test the post method that actually removes the layer and redirects
         response = self.client.post(url)
         self.assertEquals(response.status_code, 302)
+        # self.assertEquals(response['Location'], '/layers/')
         self.assertEquals(response['Location'], 'http://testserver/layers/')
 
         # test that the layer is actually removed
@@ -803,7 +869,8 @@ class LayersTest(TestCase):
         self.assertEquals(response.status_code, 302)
         resources = Model.objects.filter(id__in=[r.pk for r in resources])
         for resource in resources:
-            self.assertTrue(region in resource.regions.all())
+            if resource.regions.all():
+                self.assertTrue(region in resource.regions.all())
         # test date change
         date = datetime.now()
         response = self.client.post(
@@ -815,7 +882,7 @@ class LayersTest(TestCase):
         for resource in resources:
             self.assertEquals(resource.date, date)
         # test language change
-        language = 'Non-existing'
+        language = 'eng'
         response = self.client.post(
             reverse(view, args=(ids,)),
             data={'language': language},
@@ -824,6 +891,17 @@ class LayersTest(TestCase):
         resources = Model.objects.filter(id__in=[r.pk for r in resources])
         for resource in resources:
             self.assertEquals(resource.language, language)
+        # test keywords change
+        keywords = 'some,thing,new'
+        response = self.client.post(
+            reverse(view, args=(ids,)),
+            data={'keywords': keywords},
+        )
+        self.assertEquals(response.status_code, 302)
+        resources = Model.objects.filter(id__in=[r.pk for r in resources])
+        for resource in resources:
+            for word in resource.keywords.all():
+                self.assertTrue(word.name in keywords.split(','))
 
 
 class UnpublishedObjectTests(TestCase):
@@ -861,26 +939,36 @@ class UnpublishedObjectTests(TestCase):
         self.failUnlessEqual(response.status_code, 200)
 
         # with resource publishing
-        with self.settings(RESOURCE_PUBLISHING=True):
-            # 404 if layer is unpublished
-            response = self.client.get(reverse('layer_detail', args=('geonode:CA',)))
-            self.failUnlessEqual(response.status_code, 404)
-            # 200 if layer is unpublished but user has permission
-            assign_perm('publish_resourcebase', user, layer.get_self_resource())
-            response = self.client.get(reverse('layer_detail', args=('geonode:CA',)))
-            self.failUnlessEqual(response.status_code, 200)
-            # 200 if layer is published
-            layer.is_published = True
-            layer.save()
-            remove_perm('publish_resourcebase', user, layer.get_self_resource())
-            response = self.client.get(reverse('layer_detail', args=('geonode:CA',)))
-            self.failUnlessEqual(response.status_code, 200)
+        with self.settings(ADMIN_MODERATE_UPLOADS=True):
+            with self.settings(RESOURCE_PUBLISHING=True):
+                # 404 if layer is unpublished
+                response = self.client.get(reverse('layer_detail', args=('geonode:CA',)))
+                self.failUnlessEqual(response.status_code, 404)
+
+                # 404 if layer is unpublished but user has permission but does not belong to the group
+                assign_perm('publish_resourcebase', user, layer.get_self_resource())
+                response = self.client.get(reverse('layer_detail', args=('geonode:CA',)))
+                self.failUnlessEqual(response.status_code, 404)
+
+                # 200 if layer is unpublished and user is owner
+                remove_perm('publish_resourcebase', user, layer.get_self_resource())
+                layer.owner = user
+                layer.save()
+                response = self.client.get(reverse('layer_detail', args=('geonode:CA',)))
+                self.failUnlessEqual(response.status_code, 200)
+
+                # 200 if layer is published
+                layer.is_published = True
+                layer.save()
+                self.client.login(username='bobby', password='bob')
+                response = self.client.get(reverse('layer_detail', args=('geonode:CA',)))
+                self.failUnlessEqual(response.status_code, 200)
 
         layer.is_published = True
         layer.save()
 
 
-class LayerModerationTestCase(TestCase):
+class LayerModerationTestCase(LiveServerTestCase):
 
     fixtures = ['initial_data.json', 'bobby']
 
@@ -907,7 +995,6 @@ class LayerModerationTestCase(TestCase):
         """
         Test if moderation flag works
         """
-
         with self.settings(ADMIN_MODERATE_UPLOADS=False):
             layer_upload_url = reverse('layer_upload')
             self.client.login(username=self.user, password=self.passwd)
@@ -935,6 +1022,7 @@ class LayerModerationTestCase(TestCase):
             l = Layer.objects.get(name=lname)
 
             self.assertTrue(l.is_published)
+            l.delete()
 
         with self.settings(ADMIN_MODERATE_UPLOADS=True):
             layer_upload_url = reverse('layer_upload')
@@ -963,6 +1051,7 @@ class LayerModerationTestCase(TestCase):
             l = Layer.objects.get(name=lname)
 
             self.assertFalse(l.is_published)
+            l.delete()
 
 
 class LayerNotificationsTestCase(NotificationsTestsHelper):
@@ -983,9 +1072,15 @@ class LayerNotificationsTestCase(NotificationsTestsHelper):
         self.setup_notifications_for(LayersAppConfig.NOTIFICATIONS, self.u)
 
     def testLayerNotifications(self):
-        with self.settings(NOTIFICATION_QUEUE_ALL=True):
+        with self.settings(PINAX_NOTIFICATIONS_QUEUE_ALL=True):
             self.clear_notifications_queue()
-            l = Layer.objects.create(name='test notifications')
+            l = Layer.objects.create(
+                name='test notifications',
+                bbox_x0=-180,
+                bbox_x1=180,
+                bbox_y0=-90,
+                bbox_y1=90,
+                srid='EPSG:4326')
             l.name = 'test notifications 2'
             l.save()
             self.assertTrue(self.check_notification_out('layer_updated', self.u))

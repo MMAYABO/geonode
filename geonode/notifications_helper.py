@@ -25,16 +25,15 @@ from django.apps import AppConfig
 from django.conf import settings
 from django.db.models import signals
 
-from geonode.tasks.email import send_queued_notifications
+from geonode.tasks.tasks import send_queued_notifications
 
-E = getattr(settings, 'NOTIFICATION_ENABLED', '')
-M = getattr(settings, 'NOTIFICATIONS_MODULE', '')
+E = getattr(settings, 'NOTIFICATION_ENABLED', False)
+M = getattr(settings, 'NOTIFICATIONS_MODULE', None)
 notifications = None
 
-notifications_enabled = E and settings.NOTIFICATION_ENABLED
-has_notifications = M and M in settings.INSTALLED_APPS
+has_notifications = E and M and M in settings.INSTALLED_APPS
 
-if notifications_enabled and has_notifications:
+if has_notifications:
     notifications = import_module(M)
 
 
@@ -53,10 +52,11 @@ class NotificationsAppConfigBase(AppConfig):
         return logging.getLogger(self.__class__.__module__)
 
     def _register_notifications(self, *args, **kwargs):
-        if has_notifications:
-            self._get_logger().info("Creating notifications")
+        if has_notifications and notifications:
+            self._get_logger().debug("Creating notifications")
             for label, display, description in self.NOTIFICATIONS:
-                notifications.models.NoticeType.create(label, display, description)
+                notifications.models.NoticeType.create(
+                    label, display, description)
 
     def ready(self):
         signals.post_migrate.connect(self._register_notifications, sender=self)
@@ -65,7 +65,7 @@ class NotificationsAppConfigBase(AppConfig):
 def call_celery(func):
     def wrap(*args, **kwargs):
         ret = func(*args, **kwargs)
-        if settings.NOTIFICATION_QUEUE_ALL:
+        if settings.PINAX_NOTIFICATIONS_QUEUE_ALL:
             send_queued_notifications.delay()
         return ret
     return wrap
@@ -88,9 +88,13 @@ def send_notification(*args, **kwargs):
     """
     if has_notifications:
         # queue for further processing if required
-        if settings.NOTIFICATION_QUEUE_ALL:
+        if settings.PINAX_NOTIFICATIONS_QUEUE_ALL:
             return queue_notification(*args, **kwargs)
-        return notifications.models.send(*args, **kwargs)
+        try:
+            return notifications.models.send(*args, **kwargs)
+        except Exception:
+            logging.exception("Could not send notifications.")
+            return False
 
 
 def queue_notification(*args, **kwargs):

@@ -385,51 +385,6 @@
 
     </div>
     {% endif %}
-    <div class="modal fade" id="edit-layer1" tabindex="-1" role="dialog" aria-labelledby="myModalLabel" aria-hidden="true">
-      <div class="modal-dialog">
-        <div class="modal-content">
-          <div class="modal-header">
-            <button type="button" class="close" data-dismiss="modal" aria-hidden="true">&times;</button>
-            <h4 class="modal-title" id="myModalLabel">{% trans "Descarga imagen " %}</h4>
-          </div>
-          <div class="modal-body">
-            <div class="row edit-modal">
-       
-
-                <div class="col-lg-4 item-thumb">
-                  <a href="{{ item.detail_url }}">
-                    <img ng-src="{{ item.thumbnail_url }}" />
-                  </a>
-                </div>
-                
-              
-              {% if "change_resourcebase" in perms_list or "delete_resourcebase" in perms_list or "change_layer_data" in layer_perms %}
-              <div class="col-sm-3">
-                <i class="fa fa-square-o fa-3x rotate-45"></i>
-                <h4>{% trans "Layer" %}</h4>
-                {% if "change_resourcebase" in perms_list and not resource.service %}
-                <a class="btn btn-default btn-block btn-xs" href="{% url "layer_replace" resource.service_typename %}">{% trans "Replace" %}</a>
-                {% endif %}
-                {% if resource.storeType == 'dataStore' and "change_layer_data" in layer_perms %}
-                <a class="btn btn-default btn-block btn-xs" href="{% url "new_map" %}?layer={{resource.service_typename}}">{% trans "Edit data" %}</a>
-                {% endif %}
-                {% if "delete_resourcebase" in perms_list %}
-                <a class="btn btn-danger btn-block btn-xs" href="{% url "layer_remove" resource.service_typename %}">{% trans "Remove" %}</a>
-                {% endif %}
-              </div>
-              {% endif %}
-            </div>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-default" data-dismiss="modal">{% trans "Close" %}</button>
-          </div>
-        </div>
-      </div>
-
-      
-
-    </div>
-         <a class="btn btn-default btn-block btn-xs" href="#" id="set_thumbnail1">{% trans "Set" %}</a>
     
 
     <li class="list-group-item">
@@ -505,7 +460,7 @@
       </ul>
     </li>
     {% endif %}
-
+<!--
     {% if user.is_authenticated %}
     <li class="list-group-item">
       <h4>{% trans "Styles" %}</h4>
@@ -527,8 +482,8 @@
       </ul>
     </li>
     {% endif %}
-
-
+-->
+<!--
     {% if GEONODE_SECURITY_ENABLED %}
     {% if "change_resourcebase_permissions" in perms_list %}
     <li class="list-group-item">
@@ -538,7 +493,7 @@
     </li>
     {% endif %}
     {% endif %}
-
+-->
     {% if resource.storeType == "remoteStore" %}
     <li class="list-group-item">
             <h4>{% trans "External service layer" %}</h4>

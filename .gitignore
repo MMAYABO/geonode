@@ -7,10 +7,13 @@ pip-log.txt
 MANIFEST
 dist
 .idea/
+.vscode/
 # supporting stuff pulled in by paver script
 geonode/development.db
 /geoserver/
 downloaded
+package-lock.json
+GeoIPCities.dat
 
 docs/i18n/pot/
 
@@ -34,6 +37,7 @@ geonode/static/lib/css/leaflet.fullscreen.css
 geonode/static/lib/css/Leaflet.NavBar.css
 geonode/static/lib/css/leaflet-measure.css
 geonode/static/lib/css/leaflet-plugins.min.css
+geonode/static/lib/css/easy-button.css
 geonode/static/lib/css/bootstrap-tokenfield.css
 geonode/static/lib/js/assets.min.js
 geonode/static/lib/js/Control.Opacity.js
@@ -62,6 +66,8 @@ geonode/static/lib/js/waypoints.js
 geonode/static/lib/js/angular.min.js
 geonode/static/lib/js/angular.min.js.map
 geonode/static/lib/js/ZeroClipboard.min.js
+geonode/static/lib/js/clipboard.js
+geonode/static/lib/js/easy-button.js
 geonode/static/lib/js/moment.min.js
 geonode/static/lib/css/bootstrap-treeview.css
 geonode/static/lib/js/bootstrap-treeview.js
@@ -71,10 +77,13 @@ geonode/static/lib/js/bootstrap-treeview.min.js
 
 # Uploaded files
 geonode/uploaded
+geonode/qgis_layer
+geonode/qgis_tiles
 
 #Testing output
 .coverage
 .noseids
+.cache
 geonode_test_data/
 nosetests.xml
 geonode/static/geonode/junit.xml
@@ -82,7 +91,8 @@ geonode/static/geonode/junit.xml
 #Temporary files
 *~
 *.swp
-celerybeat-schedule
+celerybeat-schedule.*
+*.log
 
 # OSX specific
 .Python
@@ -115,3 +125,13 @@ geonode/man/
 geonode/pip-selfcheck.json
 geonode/shapely/
 geonode/share/
+
+# Contrib monitoring module
+geonode/contrib/monitoring/frontend/node_modules
+geonode/contrib/monitoring/frontend/static
+# celery files
+celerybeat-schedule.*
+
+geonode\.tests\.bdd\.e2e\.test_login/
+
+*.log

@@ -19,22 +19,20 @@
 #########################################################################
 
 # Django settings for the GeoNode project.
+import ast
 import os
-import sys
 import re
-
-from kombu import Queue
-from geonode import __file__ as geonode_path
-from geonode import get_version
-from geonode.celery_app import app  # flake8: noqa
+import sys
+from datetime import timedelta
 from distutils.util import strtobool
-import djcelery
+
 import dj_database_url
-
-
 #
 # General Django development settings
 #
+from django.conf.global_settings import DATETIME_INPUT_FORMATS
+from geonode import get_version
+from kombu import Queue
 
 # GeoNode Version
 VERSION = get_version()
@@ -52,24 +50,31 @@ DEBUG = strtobool(os.getenv('DEBUG', 'True'))
 # otherwise it will raise errors for the missing non-minified dependencies
 DEBUG_STATIC = strtobool(os.getenv('DEBUG_STATIC', 'False'))
 
-#Define email service on GeoNode
-EMAIL_ENABLE = strtobool(os.getenv('EMAIL_ENABLE', 'True'))
+# Define email service on GeoNode
+EMAIL_ENABLE = strtobool(os.getenv('EMAIL_ENABLE', 'False'))
 
 if EMAIL_ENABLE:
-    EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+    EMAIL_BACKEND = os.getenv('DJANGO_EMAIL_BACKEND',
+                              default='django.core.mail.backends.smtp.EmailBackend')
     EMAIL_HOST = 'localhost'
     EMAIL_PORT = 25
     EMAIL_HOST_USER = ''
     EMAIL_HOST_PASSWORD = ''
     EMAIL_USE_TLS = False
     DEFAULT_FROM_EMAIL = 'GeoNode <no-reply@geonode.org>'
+else:
+    EMAIL_BACKEND = os.getenv('DJANGO_EMAIL_BACKEND',
+                              default='django.core.mail.backends.console.EmailBackend')
 
 # This is needed for integration tests, they require
 # geonode to be listening for GeoServer auth requests.
 os.environ['DJANGO_LIVE_TEST_SERVER_ADDRESS'] = 'localhost:8000'
 
-ALLOWED_HOSTS = ['localhost', 'django'] if os.getenv('ALLOWED_HOSTS') is None \
-    else re.split(r' *[,|:|;] *', os.getenv('ALLOWED_HOSTS'))
+if os.getenv('DOCKER_ENV'):
+    ALLOWED_HOSTS = ast.literal_eval(os.getenv('ALLOWED_HOSTS'))
+else:
+    ALLOWED_HOSTS = ['localhost', ] if os.getenv('ALLOWED_HOSTS') is None \
+        else re.split(r' *[,|:|;] *', os.getenv('ALLOWED_HOSTS'))
 
 # AUTH_IP_WHITELIST property limits access to users/groups REST endpoints
 # to only whitelisted IP addresses.
@@ -93,10 +98,25 @@ DATABASE_URL = os.getenv(
     )
 )
 
+# DATABASE_URL = 'postgresql://test_geonode:test_geonode@localhost:5432/geonode'
+
 # Defines settings for development
+
+# since GeoDjango is in use, you should use gis-enabled engine, for example:
+# 'ENGINE': 'django.contrib.gis.db.backends.postgis'
+# see https://docs.djangoproject.com/en/1.8/ref/contrib/gis/db-api/#module-django.contrib.gis.db.backends for
+# detailed list of supported backends and notes.
 DATABASES = {
     'default': dj_database_url.parse(DATABASE_URL, conn_max_age=600)
 }
+
+if os.getenv('DEFAULT_BACKEND_DATASTORE'):
+    GEODATABASE_URL = os.getenv('GEODATABASE_URL',
+                                'postgis://\
+geonode_data:geonode_data@localhost:5432/geonode_data')
+    DATABASES[os.getenv('DEFAULT_BACKEND_DATASTORE')] = dj_database_url.parse(
+        GEODATABASE_URL, conn_max_age=600
+    )
 
 MANAGERS = ADMINS = os.getenv('ADMINS', [])
 
@@ -158,25 +178,25 @@ EXTRA_LANG_INFO = {
         'code': 'am',
         'name': 'Amharic',
         'name_local': 'Amharic',
-        },
+    },
     'tl': {
         'bidi': False,
         'code': 'tl',
         'name': 'Tagalog',
         'name_local': 'tagalog',
-        },
+    },
     'ta': {
         'bidi': False,
         'code': 'ta',
         'name': 'Tamil',
         'name_local': u'tamil',
-        },
+    },
     'si': {
         'bidi': False,
         'code': 'si',
         'name': 'Sinhala',
         'name_local': 'sinhala',
-        },
+    },
 }
 
 
@@ -230,13 +250,14 @@ _DEFAULT_LOCALE_PATHS = (
 
 LOCALE_PATHS = os.getenv('LOCALE_PATHS', _DEFAULT_LOCALE_PATHS)
 
-
 # Location of url mappings
 ROOT_URLCONF = os.getenv('ROOT_URLCONF', 'geonode.urls')
 
 # Login and logout urls override
 LOGIN_URL = os.getenv('LOGIN_URL', '/account/login/')
 LOGOUT_URL = os.getenv('LOGOUT_URL', '/account/logout/')
+
+LOGIN_REDIRECT_URL = '/'
 
 # Documents application
 ALLOWED_DOCUMENT_TYPES = [
@@ -254,10 +275,17 @@ MAX_DOCUMENT_SIZE = int(os.getenv('MAX_DOCUMENT_SIZE ', '2'))  # MB
 # DOCUMENT_TYPE_MAP = {}
 # DOCUMENT_MIMETYPE_MAP = {}
 
+UNOCONV_ENABLE = strtobool(os.getenv('UNOCONV_ENABLE', 'False'))
+
+if UNOCONV_ENABLE:
+    UNOCONV_EXECUTABLE = os.getenv('UNOCONV_EXECUTABLE', '/usr/bin/unoconv')
+    UNOCONV_TIMEOUT = os.getenv('UNOCONV_TIMEOUT', 30)  # seconds
+
 GEONODE_APPS = (
     # GeoNode internal apps
     'geonode.people',
     'geonode.base',
+    'geonode.client',
     'geonode.layers',
     'geonode.maps',
     'geonode.proxy',
@@ -270,7 +298,7 @@ GEONODE_APPS = (
     'geonode.services',
 
     # QGIS Server Apps
-    # 'geonode_qgis_server',
+    'geonode.qgis_server',
 
     # GeoServer Apps
     # Geoserver needs to come last because
@@ -278,7 +306,7 @@ GEONODE_APPS = (
     'geonode.geoserver',
     'geonode.upload',
     'geonode.tasks',
-
+    'geonode.messaging',
 )
 
 GEONODE_CONTRIB_APPS = (
@@ -290,8 +318,11 @@ GEONODE_CONTRIB_APPS = (
     # 'geonode.contrib.geosites',
     # 'geonode.contrib.nlp',
     # 'geonode.contrib.slack',
+    # 'geonode.contrib.createlayer',
+    # 'geonode.contrib.datastore_shards',
     'geonode.contrib.metadataxsl',
     'geonode.contrib.api_basemaps',
+    'geonode.contrib.ows_api',
 )
 
 # Uncomment the following line to enable contrib apps
@@ -317,24 +348,22 @@ INSTALLED_APPS = (
     'django.contrib.humanize',
     'django.contrib.gis',
 
-    # Third party apps
-
     # Utility
-    'pagination',
+    'dj_pagination',
     'taggit',
     'treebeard',
-    'friendlytagloader',
     'geoexplorer',
     'leaflet',
+    'bootstrap3_datetime',
     'django_extensions',
-    #'geonode-client',
+    'django_basic_auth',
     # 'haystack',
     'autocomplete_light',
     'mptt',
     # 'modeltranslation',
     # 'djkombu',
-    'djcelery',
-    'kombu.transport.django',
+    # 'djcelery',
+    # 'kombu.transport.django',
 
     'storages',
     'floppyforms',
@@ -344,18 +373,35 @@ INSTALLED_APPS = (
     'django_forms_bootstrap',
 
     # Social
-    'account',
     'avatar',
     'dialogos',
+    # 'pinax.comments',
     'agon_ratings',
+    # 'pinax.ratings',
     'announcements',
     'actstream',
     'user_messages',
-    'tastypie',
+    # 'tastypie',
     'polymorphic',
     'guardian',
     'oauth2_provider',
+    'corsheaders',
+
+    'invitations',
+    # login with external providers
+    'allauth',
+    'allauth.account',
+    'allauth.socialaccount',
 ) + GEONODE_APPS
+
+MONITORING_ENABLED = False
+
+# how long monitoring data should be stored
+MONITORING_DATA_TTL = timedelta(days=7)
+
+# this will disable csrf check for notification config views,
+# use with caution - for dev purpose only
+MONITORING_DISABLE_CSRF = False
 
 LOGGING = {
     'version': 1,
@@ -375,17 +421,21 @@ LOGGING = {
         }
     },
     'handlers': {
-        'null': {
-            'level': 'ERROR',
-            'class': 'django.utils.log.NullHandler',
-        },
         'console': {
             'level': 'ERROR',
             'class': 'logging.StreamHandler',
             'formatter': 'simple'
         },
+        # 'celery': {
+        #     'level': 'ERROR',
+        #     'class': 'logging.handlers.RotatingFileHandler',
+        #     'filename': 'celery.log',
+        #     'formatter': 'simple',
+        #     'maxBytes': 1024 * 1024 * 10,  # 10 mb
+        # },
         'mail_admins': {
-            'level': 'ERROR', 'filters': ['require_debug_false'],
+            'level': 'ERROR',
+            'filters': ['require_debug_false'],
             'class': 'django.utils.log.AdminEmailHandler',
         }
     },
@@ -394,14 +444,18 @@ LOGGING = {
             "handlers": ["console"], "level": "ERROR", },
         "geonode": {
             "handlers": ["console"], "level": "ERROR", },
+        "geonode.qgis_server": {
+            "handlers": ["console"], "level": "ERROR", },
         "gsconfig.catalog": {
             "handlers": ["console"], "level": "ERROR", },
         "owslib": {
             "handlers": ["console"], "level": "ERROR", },
         "pycsw": {
             "handlers": ["console"], "level": "ERROR", },
-        },
-    }
+        # "celery": {
+        #     'handlers': ['celery', 'console'], 'level': 'ERROR', },
+    },
+}
 
 #
 # Customizations to built in Django settings required by GeoNode
@@ -416,15 +470,21 @@ TEMPLATES = [
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
+                'django.template.context_processors.debug',
+                'django.template.context_processors.i18n',
+                'django.template.context_processors.tz',
+                'django.template.context_processors.request',
+                'django.template.context_processors.media',
+                'django.template.context_processors.static',
                 'django.contrib.auth.context_processors.auth',
-                'django.core.context_processors.debug',
-                'django.core.context_processors.i18n',
-                'django.core.context_processors.tz',
-                'django.core.context_processors.media',
-                'django.core.context_processors.static',
-                'django.core.context_processors.request',
                 'django.contrib.messages.context_processors.messages',
-                'account.context_processors.account',
+                'django.contrib.auth.context_processors.auth',
+                # 'django.core.context_processors.debug',
+                # 'django.core.context_processors.i18n',
+                # 'django.core.context_processors.tz',
+                # 'django.core.context_processors.media',
+                # 'django.core.context_processors.static',
+                # 'django.core.context_processors.request',
                 'geonode.context_processors.resource_urls',
                 'geonode.geoserver.context_processors.geoserver_urls',
             ],
@@ -434,17 +494,20 @@ TEMPLATES = [
 ]
 
 MIDDLEWARE_CLASSES = (
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
-
+    'dj_pagination.middleware.PaginationMiddleware',
     # The setting below makes it possible to serve different languages per
     # user depending on things like headers in HTTP requests.
     'django.middleware.locale.LocaleMiddleware',
-    'pagination.middleware.PaginationMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+
+    # Security settings
+    'django.middleware.security.SecurityMiddleware',
 
     # This middleware allows to print private layers for the users that have
     # the permissions to view them.
@@ -455,11 +518,23 @@ MIDDLEWARE_CLASSES = (
     # 'geonode.middleware.PrintProxyMiddleware',
 
     # If you use SessionAuthenticationMiddleware, be sure it appears before OAuth2TokenMiddleware.
-    # SessionAuthenticationMiddleware is NOT required for using django-oauth-toolkit.
+    # SessionAuthenticationMiddleware is NOT required for using
+    # django-oauth-toolkit.
     'django.contrib.auth.middleware.SessionAuthenticationMiddleware',
     'oauth2_provider.middleware.OAuth2TokenMiddleware',
 )
 
+# Security stuff
+MIDDLEWARE_CLASSES += ('django.middleware.security.SecurityMiddleware',)
+SESSION_COOKIE_SECURE = False
+CSRF_COOKIE_SECURE = False
+CSRF_COOKIE_HTTPONLY = False
+X_FRAME_OPTIONS = 'DENY'
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_BROWSER_XSS_FILTER = True
+SECURE_SSL_REDIRECT = False
+SECURE_HSTS_SECONDS = 3600
+SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 
 # Replacement of default authentication backend in order to support
 # permissions per object.
@@ -467,6 +542,7 @@ AUTHENTICATION_BACKENDS = (
     'oauth2_provider.backends.OAuth2Backend',
     'django.contrib.auth.backends.ModelBackend',
     'guardian.backends.ObjectPermissionBackend',
+    'allauth.account.auth_backends.AuthenticationBackend',
 )
 
 OAUTH2_PROVIDER = {
@@ -482,7 +558,7 @@ OAUTH2_PROVIDER = {
 # authorized exempt urls needed for oauth when GeoNode is set to lockdown
 AUTH_EXEMPT_URLS = ('/api/o/*', '/api/roles', '/api/adminRole', '/api/users',)
 
-ANONYMOUS_USER_ID = os.getenv('ANONYMOUS_USER_ID','-1')
+ANONYMOUS_USER_ID = os.getenv('ANONYMOUS_USER_ID', '-1')
 GUARDIAN_GET_INIT_ANONYMOUS_USER = os.getenv(
     'GUARDIAN_GET_INIT_ANONYMOUS_USER',
     'geonode.people.models.get_anonymous_user_instance'
@@ -494,7 +570,7 @@ DEFAULT_ANONYMOUS_VIEW_PERMISSION = strtobool(
     os.getenv('DEFAULT_ANONYMOUS_VIEW_PERMISSION', 'True')
 )
 DEFAULT_ANONYMOUS_DOWNLOAD_PERMISSION = strtobool(
-    os.getenv('DEFAULT_ANONYMOUS_VIEW_PERMISSION', 'True')
+    os.getenv('DEFAULT_ANONYMOUS_DOWNLOAD_PERMISSION', 'True')
 )
 
 #
@@ -529,19 +605,6 @@ ACTSTREAM_SETTINGS = {
 }
 
 
-# prevent signing up by default
-ACCOUNT_OPEN_SIGNUP = True
-
-ACCOUNT_EMAIL_CONFIRMATION_EMAIL = strtobool(
-    os.getenv('ACCOUNT_EMAIL_CONFIRMATION_EMAIL', 'False')
-)
-ACCOUNT_EMAIL_CONFIRMATION_REQUIRED = strtobool(
-    os.getenv('ACCOUNT_EMAIL_CONFIRMATION_REQUIRED', 'False')
-)
-ACCOUNT_APPROVAL_REQUIRED = strtobool(
-    os.getenv('ACCOUNT_APPROVAL_REQUIRED', 'False')
-)
-
 # Email for users to contact admins.
 THEME_ACCOUNT_CONTACT_EMAIL = os.getenv(
     'THEME_ACCOUNT_CONTACT_EMAIL', 'admin@example.com'
@@ -555,8 +618,8 @@ THEME_ACCOUNT_CONTACT_EMAIL = os.getenv(
 # some problematic 3rd party apps
 TEST_RUNNER = 'django_nose.NoseTestSuiteRunner'
 
-
 TEST = 'test' in sys.argv
+INTEGRATION = 'geonode.tests.integration' in sys.argv
 # Arguments for the test runner
 NOSE_ARGS = [
     '--nocapture',
@@ -567,8 +630,6 @@ NOSE_ARGS = [
 # GeoNode specific settings
 #
 SITEURL = os.getenv('SITEURL', "http://localhost:8000/")
-
-USE_QUEUE = strtobool(os.getenv('USE_QUEUE', 'False'))
 
 DEFAULT_WORKSPACE = os.getenv('DEFAULT_WORKSPACE', 'geonode')
 CASCADE_WORKSPACE = os.getenv('CASCADE_WORKSPACE', 'geonode')
@@ -602,6 +663,8 @@ OGC_SERVER_DEFAULT_PASSWORD = os.getenv(
     'GEOSERVER_ADMIN_PASSWORD', 'geoserver'
 )
 
+GEOFENCE_SECURITY_ENABLED = False if TEST and not INTEGRATION else True
+
 # OGC (WMS/WFS/WCS) Server Settings
 # OGC (WMS/WFS/WCS) Server Settings
 OGC_SERVER = {
@@ -619,6 +682,7 @@ OGC_SERVER = {
         'MAPFISH_PRINT_ENABLED': True,
         'PRINT_NG_ENABLED': True,
         'GEONODE_SECURITY_ENABLED': True,
+        'GEOFENCE_SECURITY_ENABLED': GEOFENCE_SECURITY_ENABLED,
         'GEOGIG_ENABLED': False,
         'WMST_ENABLED': False,
         'BACKEND_WRITE_ENABLED': True,
@@ -626,8 +690,10 @@ OGC_SERVER = {
         'LOG_FILE': '%s/geoserver/data/logs/geoserver.log'
         % os.path.abspath(os.path.join(PROJECT_ROOT, os.pardir)),
         # Set to name of database in DATABASES dictionary to enable
-        'DATASTORE': '',  # 'datastore',
+        # 'datastore',
+        'DATASTORE': '',
         'PG_GEOGIG': False,
+        #'CACHE': ".cache"  # local cache file to for HTTP requests
         'TIMEOUT': 10  # number of seconds to allow for HTTP requests
     }
 }
@@ -635,11 +701,33 @@ OGC_SERVER = {
 # Uploader Settings
 UPLOADER = {
     'BACKEND': 'geonode.rest',
+    # 'BACKEND': 'geonode.importer',
     'OPTIONS': {
         'TIME_ENABLED': False,
         'MOSAIC_ENABLED': False,
         'GEOGIG_ENABLED': False,
-    }
+    },
+    'SUPPORTED_CRS': [
+        'EPSG:4326',
+        'EPSG:3785',
+        'EPSG:3857',
+        'EPSG:900913',
+        'EPSG:32647',
+        'EPSG:32736'
+    ],
+    'SUPPORTED_EXT': [
+        '.shp',
+        '.csv',
+        '.kml',
+        '.kmz',
+        '.json',
+        '.geojson',
+        '.tif',
+        '.tiff',
+        '.geotiff',
+        '.gml',
+        '.xml'
+    ]
 }
 
 # CSW settings
@@ -663,6 +751,8 @@ CATALOGUE = {
         # login credentials (for GeoNetwork)
         # 'USER': 'admin',
         # 'PASSWORD': 'admin',
+
+        # 'ALTERNATES_ONLY': True,
     }
 }
 
@@ -722,7 +812,9 @@ PYCSW = {
 
 # default map projection
 # Note: If set to EPSG:4326, then only EPSG:4326 basemaps will work.
-DEFAULT_MAP_CRS = "EPSG:900913"
+DEFAULT_MAP_CRS = "EPSG:3857"
+
+DEFAULT_LAYER_FORMAT = "image/png8"
 
 # Where should newly created maps be focused?
 DEFAULT_MAP_CENTER = (0, 0)
@@ -738,6 +830,11 @@ STAMEN_BASEMAPS = os.environ.get('STAMEN_BASEMAPS', False)
 THUNDERFOREST_BASEMAPS = os.environ.get('THUNDERFOREST_BASEMAPS', False)
 MAPBOX_ACCESS_TOKEN = os.environ.get('MAPBOX_ACCESS_TOKEN', None)
 BING_API_KEY = os.environ.get('BING_API_KEY', None)
+GOOGLE_API_KEY = os.environ.get('GOOGLE_API_KEY', None)
+
+# handle timestamps like 2017-05-30 16:04:00.719 UTC
+DATETIME_INPUT_FORMATS = DATETIME_INPUT_FORMATS +\
+    ('%Y-%m-%d %H:%M:%S.%f %Z', '%Y-%m-%dT%H:%M:%S.%f', '%Y-%m-%dT%H:%M:%S%Z')
 
 MAP_BASELAYERS = [{
     "source": {"ptype": "gxp_olsource"},
@@ -748,18 +845,18 @@ MAP_BASELAYERS = [{
     "fixed": True,
     "group":"background"
 },
-# {
-#     "source": {"ptype": "gxp_olsource"},
-#     "type": "OpenLayers.Layer.XYZ",
-#     "title": "TEST TILE",
-#     "args": ["TEST_TILE", "http://test_tiles/tiles/${z}/${x}/${y}.png"],
-#     "name": "background",
-#     "attribution": "&copy; TEST TILE",
-#     "visibility": False,
-#     "fixed": True,
-#     "group":"background"
-# },
-{
+    # {
+    #     "source": {"ptype": "gxp_olsource"},
+    #     "type": "OpenLayers.Layer.XYZ",
+    #     "title": "TEST TILE",
+    #     "args": ["TEST_TILE", "http://test_tiles/tiles/${z}/${x}/${y}.png"],
+    #     "name": "background",
+    #     "attribution": "&copy; TEST TILE",
+    #     "visibility": False,
+    #     "fixed": True,
+    #     "group":"background"
+    # },
+    {
     "source": {"ptype": "gxp_osmsource"},
     "type": "OpenLayers.Layer.OSM",
     "name": "mapnik",
@@ -771,6 +868,7 @@ MAP_BASELAYERS = [{
 DISPLAY_SOCIAL = strtobool(os.getenv('DISPLAY_SOCIAL', 'True'))
 DISPLAY_COMMENTS = strtobool(os.getenv('DISPLAY_COMMENTS', 'True'))
 DISPLAY_RATINGS = strtobool(os.getenv('DISPLAY_RATINGS', 'True'))
+DISPLAY_WMS_LINKS = strtobool(os.getenv('DISPLAY_WMS_LINKS', 'True'))
 
 SOCIAL_ORIGINS = [{
     "label": "Email",
@@ -807,7 +905,7 @@ TWITTER_CARD = strtobool(os.getenv('TWITTER_CARD', 'True'))
 TWITTER_SITE = '@GeoNode'
 TWITTER_HASHTAGS = ['geonode']
 
-OPENGRAPH_ENABLED =  strtobool(os.getenv('OPENGRAPH_ENABLED', 'True'))
+OPENGRAPH_ENABLED = strtobool(os.getenv('OPENGRAPH_ENABLED', 'True'))
 
 # Enable Licenses User Interface
 # Regardless of selection, license field stil exists as a field in the
@@ -849,7 +947,7 @@ HAYSTACK_SEARCH = strtobool(os.getenv('HAYSTACK_SEARCH', 'False'))
 # Avoid permissions prefiltering
 SKIP_PERMS_FILTER = strtobool(os.getenv('SKIP_PERMS_FILTER', 'False'))
 # Update facet counts from Haystack
-HAYSTACK_FACET_COUNTS = strtobool(os.getenv('HAYSTACK_FACET_COUNTS', 'False'))
+HAYSTACK_FACET_COUNTS = strtobool(os.getenv('HAYSTACK_FACET_COUNTS', 'True'))
 # HAYSTACK_CONNECTIONS = {
 #    'default': {
 #        'ENGINE': 'haystack.backends.elasticsearch_backend.'
@@ -867,7 +965,13 @@ DOWNLOAD_FORMATS_METADATA = [
 ]
 DOWNLOAD_FORMATS_VECTOR = [
     'JPEG', 'PDF', 'PNG', 'Zipped Shapefile', 'GML 2.0', 'GML 3.1.1', 'CSV',
+<<<<<<< HEAD
     'Excel', 'GeoJSON',  'View in Google Earth',
+=======
+    'Excel', 'GeoJSON', 'KML', 'View in Google Earth', 'Tiles',
+    'QGIS layer file (.qlr)',
+    'QGIS project file (.qgs)',
+>>>>>>> 777c42ebae955ec96736742fcd5d0a4715e064d5
 ]
 DOWNLOAD_FORMATS_RASTER = [
     'JPEG',
@@ -879,10 +983,14 @@ DOWNLOAD_FORMATS_RASTER = [
     'ImageMosaic',
     'View in Google Earth',
     'GML',
-    'GZIP'
+    'GZIP',
+    'QGIS layer file (.qlr)',
+    'QGIS project file (.qgs)',
+    'Zipped All Files'
 ]
 
-ACCOUNT_NOTIFY_ON_PASSWORD_CHANGE = strtobool(os.getenv('ACCOUNT_NOTIFY_ON_PASSWORD_CHANGE', 'False'))
+ACCOUNT_NOTIFY_ON_PASSWORD_CHANGE = strtobool(
+    os.getenv('ACCOUNT_NOTIFY_ON_PASSWORD_CHANGE', 'False'))
 
 TASTYPIE_DEFAULT_FORMATS = ['json']
 
@@ -892,11 +1000,12 @@ AUTO_GENERATE_AVATAR_SIZES = (
 )
 
 # Number of results per page listed in the GeoNode search pages
-CLIENT_RESULTS_LIMIT = int (os.getenv('CLIENT_RESULTS_LIMIT','100'))
+CLIENT_RESULTS_LIMIT = int(os.getenv('CLIENT_RESULTS_LIMIT', '20'))
 
 # Number of items returned by the apis 0 equals no limit
-API_LIMIT_PER_PAGE = int(os.getenv('API_LIMIT_PER_PAGE','0'))
-API_INCLUDE_REGIONS_COUNT = strtobool(os.getenv('API_INCLUDE_REGIONS_COUNT', 'False'))
+API_LIMIT_PER_PAGE = int(os.getenv('API_LIMIT_PER_PAGE', '200'))
+API_INCLUDE_REGIONS_COUNT = strtobool(
+    os.getenv('API_INCLUDE_REGIONS_COUNT', 'False'))
 
 LEAFLET_CONFIG = {
     'TILES': [
@@ -970,8 +1079,9 @@ EXIF_ENABLED = False
 # Settings for NLP contrib app
 NLP_ENABLED = False
 NLP_LOCATION_THRESHOLD = 1.0
-NLP_LIBRARY_PATH = os.getenv('NLP_LIBRARY_PATH',"/opt/MITIE/mitielib")
-NLP_MODEL_PATH = os.getenv('NLP_MODEL_PATH',"/opt/MITIE/MITIE-models/english/ner_model.dat")
+NLP_LIBRARY_PATH = os.getenv('NLP_LIBRARY_PATH', "/opt/MITIE/mitielib")
+NLP_MODEL_PATH = os.getenv(
+    'NLP_MODEL_PATH', "/opt/MITIE/MITIE-models/english/ner_model.dat")
 
 # Settings for Slack contrib app
 SLACK_ENABLED = False
@@ -996,8 +1106,8 @@ CACHES = {
     #     }
 }
 
-LAYER_PREVIEW_LIBRARY = 'geoext'
-# LAYER_PREVIEW_LIBRARY = 'leaflet'
+GEONODE_CLIENT_LAYER_PREVIEW_LIBRARY = 'geoext'  # DEPRECATED use HOOKSET instead
+GEONODE_CLIENT_HOOKSET = "geonode.client.hooksets.GeoExtHookSet"
 
 SERVICE_UPDATE_INTERVAL = 0
 
@@ -1019,11 +1129,22 @@ SEARCH_FILTERS = {
 FREETEXT_KEYWORDS_READONLY = False
 
 # notification settings
-NOTIFICATION_ENABLED = False or TEST
-NOTIFICATION_LANGUAGE_MODULE = "account.Account"
+NOTIFICATION_ENABLED = True or TEST
+#PINAX_NOTIFICATIONS_LANGUAGE_MODEL = "people.Profile"
+
+# notifications backends
+_EMAIL_BACKEND = "pinax.notifications.backends.email.EmailBackend"
+PINAX_NOTIFICATIONS_BACKENDS = [
+    ("email", _EMAIL_BACKEND),
+]
+PINAX_NOTIFICATIONS_HOOKSET = "pinax.notifications.hooks.DefaultHookSet"
 
 # Queue non-blocking notifications.
-NOTIFICATION_QUEUE_ALL = False
+PINAX_NOTIFICATIONS_QUEUE_ALL = False
+PINAX_NOTIFICATIONS_LOCK_WAIT_TIMEOUT = -1
+
+# explicitly define NOTIFICATION_LOCK_LOCATION
+# NOTIFICATION_LOCK_LOCATION = <path>
 
 # pinax.notifications
 # or notification
@@ -1033,27 +1154,26 @@ NOTIFICATIONS_MODULE = 'pinax.notifications'
 USER_MESSAGES_ALLOW_MULTIPLE_RECIPIENTS = False
 
 if NOTIFICATION_ENABLED:
-    INSTALLED_APPS += (NOTIFICATIONS_MODULE, )
+    if NOTIFICATIONS_MODULE not in INSTALLED_APPS:
+        INSTALLED_APPS += (NOTIFICATIONS_MODULE, )
 
-BROKER_URL = os.getenv('BROKER_URL', "django://")
-CELERY_ALWAYS_EAGER = True
-CELERY_EAGER_PROPAGATES_EXCEPTIONS = True
-CELERY_IGNORE_RESULT = True
-CELERY_SEND_EVENTS = False
+# async signals can be the same as broker url
+# but they should have separate setting anyway
+# use amqp:// for local rabbitmq server
+ASYNC_SIGNALS_BROKER_URL = 'memory://'
+
+CELERY_BROKER_URL = os.getenv('BROKER_URL', "amqp://")
 CELERY_RESULT_BACKEND = None
+CELERY_TASK_ALWAYS_EAGER = True  # set this to False in order to run async
+CELERY_TASK_IGNORE_RESULT = True
+CELERY_TASK_DEFAULT_QUEUE = "default"
+CELERY_TASK_DEFAULT_EXCHANGE = "default"
+CELERY_TASK_DEFAULT_EXCHANGE_TYPE = "direct"
+CELERY_TASK_DEFAULT_ROUTING_KEY = "default"
+CELERY_TASK_CREATE_MISSING_QUEUES = True
 CELERY_TASK_RESULT_EXPIRES = 1
-CELERY_DISABLE_RATE_LIMITS = True
-CELERY_DEFAULT_QUEUE = "default"
-CELERY_DEFAULT_EXCHANGE = "default"
-CELERY_DEFAULT_EXCHANGE_TYPE = "direct"
-CELERY_DEFAULT_ROUTING_KEY = "default"
-CELERY_CREATE_MISSING_QUEUES = True
-CELERY_IMPORTS = (
-    'geonode.tasks.deletion',
-    'geonode.tasks.update',
-    'geonode.tasks.email'
-)
-
+CELERY_WORKER_DISABLE_RATE_LIMITS = True
+CELERY_WORKER_SEND_TASK_EVENTS = False
 
 CELERY_QUEUES = [
     Queue('default', routing_key='default'),
@@ -1061,7 +1181,6 @@ CELERY_QUEUES = [
     Queue('update', routing_key='update'),
     Queue('email', routing_key='email'),
 ]
-
 
 # AWS S3 Settings
 
@@ -1090,7 +1209,7 @@ if S3_MEDIA_ENABLED:
     MEDIA_URL = "https://%s/%s/" % (AWS_S3_BUCKET_DOMAIN, MEDIAFILES_LOCATION)
 
 
-djcelery.setup_loader()
+# djcelery.setup_loader()
 
 # There are 3 ways to override GeoNode settings:
 # 1. Using environment variables, if your changes to GeoNode are minimal.
@@ -1098,14 +1217,14 @@ djcelery.setup_loader()
 # 3. Override settings in a local_settings.py file, legacy.
 # Load more settings from a file called local_settings.py if it exists
 try:
-    from local_settings import *  # noqa
+    from geonode.local_settings import *  # flake8: noqa
 except ImportError:
     pass
 
 
 # Load additonal basemaps, see geonode/contrib/api_basemap/README.md
 try:
-    from geonode.contrib.api_basemaps import *
+    from geonode.contrib.api_basemaps import *  # flake8: noqa
 except ImportError:
     pass
 
@@ -1118,27 +1237,40 @@ if LOCKDOWN_GEONODE:
 # maybe they set it as a windows environment
 if os.name == 'nt':
     if "GEOS_LIBRARY_PATH" not in locals() \
-      or "GDAL_LIBRARY_PATH" not in locals():
+            or "GDAL_LIBRARY_PATH" not in locals():
         if os.environ.get("GEOS_LIBRARY_PATH", None) \
-          and os.environ.get("GDAL_LIBRARY_PATH", None):
+                and os.environ.get("GDAL_LIBRARY_PATH", None):
             GEOS_LIBRARY_PATH = os.environ.get('GEOS_LIBRARY_PATH')
             GDAL_LIBRARY_PATH = os.environ.get('GDAL_LIBRARY_PATH')
         else:
             # maybe it will be found regardless if not it will throw 500 error
-            from django.contrib.gis.geos import GEOSGeometry
+            from django.contrib.gis.geos import GEOSGeometry  # flake8: noqa
 
 
 # define the urls after the settings are overridden
-if 'geonode.geoserver' in INSTALLED_APPS:
+USE_GEOSERVER = 'geonode.geoserver' in INSTALLED_APPS
+if USE_GEOSERVER:
+    PUBLIC_GEOSERVER = {
+        "source": {
+            "title": "GeoServer - Public Layers",
+            "attribution": "&copy; %s" % SITEURL,
+            "ptype": "gxp_wmscsource",
+            "url": OGC_SERVER['default']['PUBLIC_LOCATION'] + "ows",
+            "restUrl": "/gs/rest"
+        }
+    }
     LOCAL_GEOSERVER = {
         "source": {
+            "title": "GeoServer - Private Layers",
+            "attribution": "&copy; %s" % SITEURL,
             "ptype": "gxp_wmscsource",
-            "url": OGC_SERVER['default']['PUBLIC_LOCATION'] + "wms",
+            "url": "/gs/ows",
             "restUrl": "/gs/rest"
         }
     }
     baselayers = MAP_BASELAYERS
-    MAP_BASELAYERS = [LOCAL_GEOSERVER]
+    # MAP_BASELAYERS = [PUBLIC_GEOSERVER, LOCAL_GEOSERVER]
+    MAP_BASELAYERS = [PUBLIC_GEOSERVER]
     MAP_BASELAYERS.extend(baselayers)
 
 # Keywords thesauri
@@ -1154,4 +1286,58 @@ RISKS = {'DEFAULT_LOCATION': None,
                            'BIN': '/usr/bin/wkhtml2pdf',
                            'ARGS': []}}
 
+# Each uploaded Layer must be approved by an Admin before becoming visible
 ADMIN_MODERATE_UPLOADS = False
+
+# add following lines to your local settings to enable monitoring
+if MONITORING_ENABLED:
+    if 'geonode.contrib.monitoring' not in INSTALLED_APPS:
+        INSTALLED_APPS += ('geonode.contrib.monitoring',)
+    if 'geonode.contrib.monitoring.middleware.MonitoringMiddleware' not in MIDDLEWARE_CLASSES:
+        MIDDLEWARE_CLASSES += \
+            ('geonode.contrib.monitoring.middleware.MonitoringMiddleware',)
+
+GEOIP_PATH = os.path.join(PROJECT_ROOT, 'GeoIPCities.dat')
+# If this option is enabled, Resources belonging to a Group won't be
+# visible by others
+GROUP_PRIVATE_RESOURCES = False
+
+# If this option is enabled, Groups will become strictly Mandatory on
+# Metadata Wizard
+GROUP_MANDATORY_RESOURCES = False
+
+# A boolean which specifies wether to display the email in user's profile
+SHOW_PROFILE_EMAIL = False
+
+# Enables cross origin requests for geonode-client
+MAP_CLIENT_USE_CROSS_ORIGIN_CREDENTIALS = strtobool(os.getenv(
+    'MAP_CLIENT_USE_CROSS_ORIGIN_CREDENTIALS',
+    'False'
+))
+
+ACCOUNT_OPEN_SIGNUP = True
+ACCOUNT_APPROVAL_REQUIRED = strtobool(
+    os.getenv('ACCOUNT_APPROVAL_REQUIRED', 'False')
+)
+ACCOUNT_ADAPTER = 'geonode.people.adapters.LocalAccountAdapter'
+ACCOUNT_CONFIRM_EMAIL_ON_GET = True
+ACCOUNT_EMAIL_REQUIRED = True
+ACCOUNT_EMAIL_VERIFICATION = 'optional'
+SOCIALACCOUNT_ADAPTER = 'geonode.people.adapters.SocialAccountAdapter'
+
+INVITATIONS_ADAPTER = ACCOUNT_ADAPTER
+
+# Choose thumbnail generator -- this is the default generator
+THUMBNAIL_GENERATOR = "geonode.layers.utils.create_gs_thumbnail_geonode"
+
+
+GEOTIFF_IO_ENABLED = strtobool(
+    os.getenv('GEOTIFF_IO_ENABLED', 'False')
+)
+
+# if your public geoserver location does not use HTTPS,
+# you must set GEOTIFF_IO_BASE_URL to use http://
+# for example, http://app.geotiff.io
+GEOTIFF_IO_BASE_URL = os.getenv(
+    'GEOTIFF_IO_BASE_URL', 'https://app.geotiff.io'
+)
